@@ -29,3 +29,21 @@ jobs:
         with:
           name: application-jar
           path: target/webapp-0.0.1-SNAPSHOT.jar
+
+  docker-build:
+    name: Build Docker image
+    needs: build-app
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Donwload JAR artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: application-jar
+          path: target
+
+      - name: Build Docker image
+        run: docker build -t genie-website:${{ github.sha }} .
