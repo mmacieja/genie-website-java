@@ -1,0 +1,89 @@
+name: CI/CD Pipeline
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-app:
+    name: Build Java app
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Build app
+        run: ./mvnw --batch-mode clean package
+
+      - name: Upload JAR artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: application-jar
+          path: target/webapp-0.0.1-SNAPSHOT.jar
+
+  docker-build:
+    name: Build Docker image
+    needs: build-app
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Donwload JAR artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: application-jar
+          path: target
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Docker image
+        run: docker build -t ghcr.io/${{ github.repository }}:${{ github.sha }} .
+
+      - name: Scan Docker image with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: 'ghcr.io/${{ github.repository }}:${{ github.sha }}'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+
+      - name: Push Docker image
+        run: docker push ghcr.io/${{ github.repository }}:${{ github.sha }}
+
+  scan-code:
+    name: Scan code with Trivy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Scan source code
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
